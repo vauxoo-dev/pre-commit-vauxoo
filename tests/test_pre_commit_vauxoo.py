@@ -36,7 +36,7 @@ class TestPreCommitVauxoo(unittest.TestCase):
 
     def test_basic(self):
         env = os.environ
-        env['INCLUDE_LINT'] = 'resources'
+        env['INCLUDE_LINT'] = 'resources/module_example1'
         env['PRECOMMIT_AUTOFIX'] = '1'
         result = self.runner.invoke(main, [], env=env)
         self.assertEqual(result.output, '')
@@ -46,7 +46,7 @@ class TestPreCommitVauxoo(unittest.TestCase):
         self.runner = CliRunner()
         env = os.environ
         env['PRECOMMIT_AUTOFIX'] = '1'
-        os.chdir("resources")
+        os.chdir("resources/module_example1")
         result = self.runner.invoke(main, [], env=env)
 
         self.assertEqual(result.output, '')
@@ -57,7 +57,7 @@ class TestPreCommitVauxoo(unittest.TestCase):
         env = os.environ
         env['PRECOMMIT_AUTOFIX'] = '1'
         env['EXCLUDE_LINT'] = 'import-error'
-        os.chdir("resources")
+        os.chdir("resources/module_example1")
         result = self.runner.invoke(main, [], env=env)
 
         self.assertEqual(result.output, '')
@@ -68,7 +68,7 @@ class TestPreCommitVauxoo(unittest.TestCase):
         env = os.environ
         env['PRECOMMIT_AUTOFIX'] = '1'
         env['EXCLUDE_AUTOFIX'] = 'resources/module_example1/demo/'
-        os.chdir("resources")
+        os.chdir("resources/module_example1")
         result = self.runner.invoke(main, [], env=env)
 
         self.assertEqual(result.output, '')
