@@ -112,7 +112,7 @@ class CSVPath(click.Path):
 
     def convert(self, value, param, ctx):
         values = ()
-        repo_dirname = pre_commit_vauxoo.get_repo()
+        repo_dirname = os.path.abspath(pre_commit_vauxoo.get_repo())
         for v in strcsv2tuple(value):
             try:
                 new_value = super().convert(v, param, ctx)
@@ -120,7 +120,7 @@ class CSVPath(click.Path):
                 # The envvar are using path based on root repo path
                 new_value = os.path.join(repo_dirname, v)
                 new_value = super().convert(new_value, param, ctx)
-            new_value = os.path.relpath(new_value, repo_dirname)
+            new_value = os.path.relpath(os.path.abspath(new_value), os.path.abspath(repo_dirname))
             values += (new_value,)
         return values
 
