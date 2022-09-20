@@ -22,7 +22,7 @@ class TestPreCommitVauxoo(unittest.TestCase):
         src_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "resources")
         self.create_dummy_repo(src_path, self.tmp_dir)
         self.maxDiff = None
-        os.environ["EXCLUDE_AUTOFIX"] = "resources/module_autofix1/"
+        os.environ["EXCLUDE_AUTOFIX"] = os.path.join("resources", "module_autofix1")
 
     def create_dummy_repo(self, src_path, dest_path):
         subprocess.call(["git", "init", "--initial-branch=main", dest_path])
