@@ -86,7 +86,7 @@ def copy_cfg_files(
                         _logger.info("Applying EXCLUDE_LINT=%s to %s", exclude_lint, dst)
                         line += "    %s\n" % exclude_lint_regex
                     if fname == ".pre-commit-config-autofix.yaml" and exclude_autofix:
-                        _logger.info("Applying EXCLUDE_AUTOFIX=%s to %s", exclude_autofix, dst)
+                        _logger.info("Applying EXCLUDE_AUTOFIX=%s to %s. repo_dirname %s relpath %s", exclude_autofix, dst, repo_dirname, )
                         line += "    %s\n" % exclude_autofix_regex
                 if pylint_disable_checks and fname.startswith(".pre-commit-config") and "--disable=R0000" in line:
                     _logger.info(
