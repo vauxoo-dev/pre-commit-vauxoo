@@ -1,8 +1,10 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 
 from click.testing import CliRunner
 
@@ -20,6 +22,7 @@ class TestPreCommitVauxoo(unittest.TestCase):
         src_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "resources")
         self.create_dummy_repo(src_path, self.tmp_dir)
         self.maxDiff = None
+        os.environ["EXCLUDE_AUTOFIX"] = "resources/module_autofix1/"
 
     def create_dummy_repo(self, src_path, dest_path):
         subprocess.call(["git", "init", "--initial-branch=main", dest_path])
@@ -38,11 +41,22 @@ class TestPreCommitVauxoo(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.old_environ)
 
+    @contextmanager
+    def custom_assert_logs(self, module, level, expected_logs):
+        if sys.version_info >= (3, 4):
+            with self.assertLogs(module, level=level) as logs:
+                yield
+            diff = set(expected_logs) - set(logs.output)
+            self.assertFalse(diff, "Logs expected not raised %s" % diff)
+        else:
+            # bypassing for dual compatibility with py<3.4
+            yield
+
     def test_basic(self):
         os.environ["INCLUDE_LINT"] = "resources"
         os.environ["PRECOMMIT_HOOKS_TYPE"] = "all"
         result = self.runner.invoke(main, [])
-        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result)
+        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result.output)
         with open(os.path.join(self.tmp_dir, "pyproject.toml"), "r") as f_pyproject:
             self.assertIn("skip-string-normalization=false", f_pyproject, "Skip string normalization not set")
 
@@ -50,8 +64,10 @@ class TestPreCommitVauxoo(unittest.TestCase):
         self.runner = CliRunner()
         os.environ["PRECOMMIT_HOOKS_TYPE"] = "all"
         os.chdir("resources")
-        result = self.runner.invoke(main, [])
-        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result)
+        expected_logs = ["WARNING:pre-commit-vauxoo:Running in current directory 'resources'"]
+        with self.custom_assert_logs("pre-commit-vauxoo", level="WARNING", expected_logs=expected_logs):
+            result = self.runner.invoke(main, [])
+        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result.output)
 
     def test_exclude_lint_path(self):
         self.runner = CliRunner()
@@ -60,7 +76,7 @@ class TestPreCommitVauxoo(unittest.TestCase):
         os.environ["BLACK_SKIP_STRING_NORMALIZATION"] = "false"
         os.environ["EXCLUDE_LINT"] = "resources/module_example1/models"
         result = self.runner.invoke(main, [])
-        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result)
+        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result.output)
         with open(os.path.join(self.tmp_dir, "pyproject.toml"), "r") as f_pyproject:
             self.assertIn("skip-string-normalization=false", f_pyproject, "Skip string normalization not set")
 
@@ -68,7 +84,7 @@ class TestPreCommitVauxoo(unittest.TestCase):
         self.runner = CliRunner()
         os.environ["DISABLE_PYLINT_CHECKS"] = "import-error"
         result = self.runner.invoke(main, [])
-        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result)
+        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result.output)
 
     def test_exclude_autofix(self):
         self.runner = CliRunner()
@@ -77,7 +93,7 @@ class TestPreCommitVauxoo(unittest.TestCase):
         os.environ["EXCLUDE_AUTOFIX"] = "resources/module_example1/demo/"
         os.environ["BLACK_SKIP_STRING_NORMALIZATION"] = "true"
         result = self.runner.invoke(main, [])
-        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result)
+        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result.output)
         with open(os.path.join(self.tmp_dir, "pyproject.toml"), "r") as f_pyproject:
             self.assertIn("skip-string-normalization=true", f_pyproject, "Skip string normalization not set")
 
@@ -85,21 +101,23 @@ class TestPreCommitVauxoo(unittest.TestCase):
         os.environ["PRECOMMIT_FAIL_OPTIONAL"] = "1"
         # Only optional
         os.environ["PRECOMMIT_HOOKS_TYPE"] = "optional"
-        result = self.runner.invoke(main, [])
+        expected_logs = ["ERROR:pre-commit-vauxoo:Optional checks failed"]
+        with self.custom_assert_logs("pre-commit-vauxoo", level="ERROR", expected_logs=expected_logs):
+            result = self.runner.invoke(main, [])
         self.assertEqual(result.exit_code, 1, "Exited without error")
 
     def test_rm_options(self):
         # Only mandatory
         os.environ["PRECOMMIT_HOOKS_TYPE"] = "all,-optional,-fix,-experimental"
         result = self.runner.invoke(main, [])
-        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result)
+        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result.output)
 
     def test_install_git_hook_pre_commit(self):
         """Test .git/hooks/pre-commit script"""
         git_hook_pre_commit = os.path.join(self.tmp_dir, ".git", "hooks", "pre-commit")
         self.assertFalse(os.path.isfile(git_hook_pre_commit), "File created before to install it")
         result = self.runner.invoke(main, ["--install"])
-        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result)
+        self.assertEqual(result.exit_code, 0, "Exited with error %s" % result.output)
         self.assertTrue(os.path.isfile(git_hook_pre_commit), "File not created")
         with open(git_hook_pre_commit, "r") as f_git_hook_pre_commit:
             self.assertIn("pre-commit-vauxoo", f_git_hook_pre_commit.read(), "File pre-commit not generated correctly")
@@ -118,6 +136,14 @@ class TestPreCommitVauxoo(unittest.TestCase):
             ]
         )
         self.assertEqual(exit_code, 0, "Exited with error_code %s" % exit_code)
+
+    def test_autofixes(self):
+        os.environ["PRECOMMIT_HOOKS_TYPE"] = "all"
+        os.environ["EXCLUDE_AUTOFIX"] = ""
+        expected_logs = ["ERROR:pre-commit-vauxoo:Autofix checks reformatted"]
+        with self.custom_assert_logs("pre-commit-vauxoo", level="ERROR", expected_logs=expected_logs):
+            result = self.runner.invoke(main, [])
+        self.assertEqual(result.exit_code, 1, "Exited with error %s" % result.output)
 
 
 if __name__ == "__main__":
