@@ -28,8 +28,8 @@ default_language_version:
   python: python3
   node: "14.13.0"
 repos:
-  - repo: https://github.com/OCA/pylint-odoo
-    rev: v8.0.21
+  - repo: https://github.com/vauxoo-dev/pylint-odoo
+    rev: 252e915b8574601e574868e7b683cfc1b85d0773
     hooks:
       - id: pylint_odoo
         name: pylint optional checks
