@@ -52,6 +52,11 @@ repos:
           # - --fix
   - repo: local
     hooks:
+      - id: snake_case_filename
+        name: file names cannot have spaces, accents or dashes
+        entry: the following files have invalid names, please use only a-z, A-Z, 0-9, _, .
+        language: fail
+        files: '(?a)^(?!\.).*[^\w.]'
       - id: vx-check-deactivate
         name: deactivate.jinja syntax check.
         description: Validate deactivate.jinja files' syntax.
