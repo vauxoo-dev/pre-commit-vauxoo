@@ -70,7 +70,7 @@ repos:
         args: ["--fix=lf"]
       - id: requirements-txt-fixer
       - id: pretty-format-json
-        args: ["--autofix", "--indent=4"]
+        args: ["--autofix"]
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.19.1
     hooks:
