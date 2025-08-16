@@ -265,6 +265,59 @@ class TestPreCommitVauxoo(unittest.TestCase):
             result = self.runner.invoke(main, [])
         self.assertEqual(result.exit_code, 1, "Exited without error")
 
+    def test_gitleaks_configuration(self):
+        """Test that Gitleaks is properly configured in pre-commit configs."""
+        os.environ["PRECOMMIT_HOOKS_TYPE"] = "all"
+        self.runner.invoke(main, [])
+
+        # Check mandatory config
+        with open(os.path.join(self.tmp_dir, ".pre-commit-config.yaml")) as config_fd:
+            config = load(config_fd, Loader)
+
+        # Verify Gitleaks is in the repos list
+        gitleaks_found = False
+        for repo in config["repos"]:
+            if repo.get("repo") == "https://github.com/gitleaks/gitleaks":
+                gitleaks_found = True
+                # Verify the hook configuration
+                for hook in repo.get("hooks", []):
+                    if hook.get("id") == "gitleaks":
+                        self.assertEqual(hook.get("name"), "gitleaks - Detect hardcoded secrets and credentials")
+                        self.assertEqual(
+                            hook.get("description"), "Scan for hardcoded secrets like passwords, API keys, and tokens"
+                        )
+                        self.assertTrue(hook.get("verbose", False))
+                        self.assertIn("--verbose", hook.get("args", []))
+                        break
+                break
+
+        self.assertTrue(gitleaks_found, "Gitleaks not found in mandatory pre-commit config")
+
+        # Check optional config
+        with open(os.path.join(self.tmp_dir, ".pre-commit-config-optional.yaml")) as config_fd:
+            config = load(config_fd, Loader)
+
+        # Verify Gitleaks is in the optional repos list
+        gitleaks_found = False
+        for repo in config["repos"]:
+            if repo.get("repo") == "https://github.com/gitleaks/gitleaks":
+                gitleaks_found = True
+                # Verify the hook configuration
+                for hook in repo.get("hooks", []):
+                    if hook.get("id") == "gitleaks":
+                        self.assertEqual(hook.get("name"), "gitleaks - Detect hardcoded secrets and credentials")
+                        self.assertEqual(
+                            hook.get("description"), "Scan for hardcoded secrets like passwords, API keys, and tokens"
+                        )
+                        self.assertTrue(hook.get("verbose", False))
+                        # Note: --exit-zero flag was removed as it's not supported in current Gitleaks version
+                        self.assertIn("--verbose", hook.get("args", []))
+                        self.assertTrue(hook.get("require_serial", False))
+                        break
+                break
+
+        self.assertTrue(gitleaks_found, "Gitleaks not found in optional pre-commit config")
+
 
 if __name__ == "__main__":
     unittest.main()

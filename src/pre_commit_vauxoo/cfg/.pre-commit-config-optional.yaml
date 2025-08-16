@@ -68,6 +68,17 @@ repos:
           - --ini=.bandit
         # reduce the INFO logger
         require_serial: true
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
+        name: gitleaks - Detect hardcoded secrets and credentials
+        description: Scan for hardcoded secrets like passwords, API keys, and tokens
+        verbose: True
+        args:
+          - --verbose
+        # reduce the INFO logger
+        require_serial: true
   - repo: https://github.com/OCA/pylint-odoo
     rev: v9.3.14
     hooks:
