@@ -1,42 +1,66 @@
 name: build
+
 on:
-  # Trigger the workflow on push or pull request,
-  # but only for the main branch
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   pull_request:
-    branches:
-      - main
+    branches: [main]
+
+# Cancel in-flight runs for same ref to save minutes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # For Trusted Publishing to PyPI (enable on PyPI project first):
+  id-token: write
 
 env:
   CACHE_VERSION: 1
+  PRE_COMMIT_HOME: ~/.cache/pre-commit
   PRE_COMMIT_CACHE: ~/.cache/pre-commit
 
 jobs:
-  deployv:
+  lint:
+    name: pre-commit (dockerv)
     runs-on: ubuntu-latest
     container:
       image: quay.io/vauxoo/dockerv:latest
       options: --user root
-    name: docker vauxoo light image
     env:
       PIP_CACHE_DIR: "/root/.cache/pip"
       PRE_COMMIT_HOME: "/root/.cache/pre-commit"
     steps:
       - uses: actions/checkout@v4
-      - name: Upgrade pre-commit-vauxoo to the latest version (w/o update dependencies if not needed)
-        run: >-
-          pip3 install --ignore-installed -U . &&
-          pip3 install --force-reinstall --no-deps . &&
+        with:
+          fetch-depth: 0
+
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PRE_COMMIT_HOME }}
+          key: pcache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install toolchain
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -U .  # install once with deps
           git config --global --add safe.directory '*'
+
       - name: Run pre-commit-vauxoo
-        run: pre-commit-vauxoo
+        run: |
+          pre-commit-vauxoo --show-diff-on-failure --color always
+
   test:
+    name: tox (${{ matrix.os }}, py${{ matrix.python }}, ${{ matrix.tox_env }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    continue-on-error: ${{ matrix.python == '3.14-dev' }}
     strategy:
       fail-fast: false
       matrix:
@@ -57,80 +81,129 @@ jobs:
             os: ubuntu-latest
             tox_env: 'py'
         exclude:
-          # macos-14 AKA macos-latest has switched to being an ARM runner, only supporting newer versions of Python
-          # https://github.com/actions/setup-python/issues/825#issuecomment-2096792396
+          # macos-latest (ARM) doesn't support older Pythons
           - python: '3.10'
             os: macos-latest
 
     steps:
-    - name: Set git to not change EoL
-      if: runner.os == 'Windows'
-      run: |
-        git config --global core.autocrlf false
-    - name: Cache pre-commit packages
-      id: cache-pre-commit
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.PRE_COMMIT_CACHE }}
-        key: ${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python }}-pre-commit
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python }}
-        architecture: 'x64'
-        cache: 'pip'
-    - name: Install system dependencies (Linux only)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update -qqq
-        sudo apt-get install -y libxml2-dev libxslt1-dev zlib1g-dev
-    - name: install dependencies
-      run: |
-        python -mpip install --progress-bar=off -r test-requirements.txt
-        # virtualenv --version
-        pip --version
-        # tox --version
-        pip list --format=freeze
-    - name: install apk packages
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt update -qq
-        sudo rm -rf /var/lib/man-db/auto-update  # Avoid unnecessary time-consuming "Processing triggers for man-db" after using "apt install"
-        sudo apt install -y libecpg-dev  # Required for vx-check-deactivate hook
-    - name: Test == windows
-      if: runner.os == 'Windows'
-      env:
-        TOXPYTHON: '${{ matrix.toxpython }}'
-      run: |
-        [System.Environment]::SetEnvironmentVariable('PATH',$env:Path + ";" + $env:PGBIN)
-        ecpg --version
-        tox -e ${{ matrix.tox_env }} -v
-    - name: Test != Windows
-      if: runner.os != 'Windows'
-      env:
-        TOXPYTHON: '${{ matrix.toxpython }}'
-      run: |
-        tox -e ${{ matrix.tox_env }} -v
-    # TODO: Publish package only for signed tags
-    - name: Publish package
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags') && contains(matrix.tox_env, 'build')
-      run: |
-        ls -lah dist/*
-        python -m twine upload --verbose -u __token__ -p ${{ secrets.PYPI_API_TOKEN }} --repository-url https://upload.pypi.org/legacy/ dist/*
-        sleep 300
-        curl -X POST -F token=${{ secrets.TRIGGER_TOKEN_DOCKERV }} -F ref=master https://git.vauxoo.com/api/v4/projects/443/trigger/pipeline
-    # TODO: Add GITHUB_RUN_ID.GITHUB_RUN_ATTEMPT.GITHUB_RUN_NUMBER to bumpversion to avoid duplicating upload versions or even the git sha
-    # For now, feel free to uncomment this line of code to test things related to upload to pypi (test)
-    # - name: TestPyPI publish package
-    #   if: runner.os == 'Linux' && startsWith(matrix.tox_env, 'py39-cover')
-    #   run: >-
-    #     python -m twine upload --verbose -u __token__ -p ${{ secrets.PYPI_TEST_API_TOKEN }} \
-    #       --repository-url https://test.pypi.org/legacy/ dist/* || true
-    - name: codecov
-      if: startsWith(matrix.tox_env, 'py')  # only coveralls in python tests
-      uses: codecov/codecov-action@v4
-      with:
-        fail_ci_if_error: false  # TODO: Set true after fix token for win&macosx
-        verbose: true
+      - name: Normalize EOL (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: 'x64'
+          cache: 'pip'
+
+      - name: Cache tox
+        uses: actions/cache@v4
+        with:
+          path: .tox
+          key: tox-${{ runner.os }}-${{ runner.arch }}-py${{ matrix.python }}-${{ hashFiles('**/tox.ini', '**/pyproject.toml', '**/setup.cfg', '**/requirements*.txt') }}
+
+      - name: Install system dependencies (Linux only)
+        if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update -qq
+          sudo rm -rf /var/lib/man-db/auto-update
+          sudo apt-get install -y libxml2-dev libxslt1-dev zlib1g-dev libecpg-dev
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --progress-bar=off -r test-requirements.txt
+          pip --version
+          pip list --format=freeze
+
+      - name: Test == Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TOXPYTHON: '${{ matrix.toxpython }}'
+        run: |
+          [System.Environment]::SetEnvironmentVariable('PATH',$env:Path + ";" + $env:PGBIN)
+          ecpg --version
+          tox -e ${{ matrix.tox_env }} -v
+
+      - name: Test != Windows
+        if: runner.os != 'Windows'
+        env:
+          TOXPYTHON: '${{ matrix.toxpython }}'
+        run: |
+          tox -e ${{ matrix.tox_env }} -v
+
+      - name: Upload test reports
+        if: startsWith(matrix.tox_env, 'py')
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-${{ matrix.os }}-py${{ matrix.python }}
+          path: |
+            .tox/**/junit*.xml
+            .tox/**/coverage*.xml
+            coverage.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Codecov
+        if: startsWith(matrix.tox_env, 'py')
+        uses: codecov/codecov-action@v4
+        with:
+          verbose: true
+          fail_ci_if_error: false
+
+  build:
+    name: Build sdist/wheels
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+          ls -lah dist/
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          retention-days: 14
+
+  publish:
+    name: Publish to PyPI & trigger Dockerv
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # Preferred: PyPI Trusted Publishing (no API token)
+      - name: Publish (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true
+          verbose: true
+
+      - name: Trigger Dockerv pipeline
+        run: |
+          curl -X POST \
+            -F token=${{ secrets.TRIGGER_TOKEN_DOCKERV }} \
+            -F ref=master \
+            https://git.vauxoo.com/api/v4/projects/443/trigger/pipeline
