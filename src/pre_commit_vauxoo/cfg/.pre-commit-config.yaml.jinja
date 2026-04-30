@@ -31,15 +31,12 @@ default_language_version:
   python: python3
   node: "24.13.0"
 repos:
-  - repo: https://github.com/PyCQA/flake8
-{%- if flake8_matrix_value >= 20 %}
-    rev: 7.3.0
-{%- else %}
-    rev: 6.1.0
-{%- endif %}
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.1
     hooks:
-      - id: flake8
-        name: flake8 mandatory checks
+      - id: ruff
+        name: ruff mandatory checks
+        args: ["--output-format=full"]
   - repo: https://github.com/OCA/pylint-odoo
 {%- if pylint_matrix_value >= 20 %}
     rev: v10.0.2

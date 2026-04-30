@@ -60,29 +60,12 @@ repos:
           - --config=.oca_hooks-autofix.cfg
           - --fix
 {%- endif %}
-  - repo: https://github.com/psf/black-pre-commit-mirror.git
-{%- if black_autoflake_matrix_value >= 20 %}
-    rev: 25.12.0
-{%- else %}
-    rev: 23.12.1
-{%- endif %}
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.1
     hooks:
-      - id: black
-  - repo: https://github.com/myint/autoflake
-{%- if black_autoflake_matrix_value >= 20 %}
-    rev: v2.3.1
-{%- else %}
-    rev: v2.2.1
-{%- endif %}
-    hooks:
-      - id: autoflake
-        args:
-          - --expand-star-imports
-          - --ignore-init-module-imports
-          - --in-place
-          - --remove-all-unused-imports
-          - --remove-duplicate-keys
-          - --remove-unused-variables
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix", "--output-format=full"]
+      - id: ruff-format
   - repo: local
     hooks:
       - id: prettier
@@ -123,15 +106,7 @@ repos:
 {%- if pre_commit_matrix_value >= 20 %}
       - id: requirements-txt-fixer
 {%- endif %}
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.2
-    hooks:
-      - id: pyupgrade
-        args: ["--keep-percent-format"]
-  - repo: https://github.com/PyCQA/isort
-    rev: 7.0.0
-    hooks:
-      - id: isort
+
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.6
     hooks:
